@@ -19,15 +19,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Identity must be set BEFORE any operation that can create a commit.
-      # `git submodule update --remote --merge` used to fail here with
-      # "Committer identity unknown" because the merge inside vendor/ruvector
-      # needs an author when the pinned commit isn't a fast-forward of upstream.
-      - name: Configure git identity
-        run: |
-          git config --global user.name  "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       # Use a plain `--remote` checkout (detached HEAD at each submodule's
       # configured `branch` tip from .gitmodules) rather than `--merge`. We only
       # want to bump the superproject's gitlink to the latest upstream commit;
@@ -37,6 +28,12 @@ jobs:
         run: |
           git submodule sync --recursive
           git submodule update --remote --recursive
+
+      # Identity must be set BEFORE any operation that can create a commit.
+      - name: Configure git identity
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Check for changes
         id: check
