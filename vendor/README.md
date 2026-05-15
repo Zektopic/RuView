@@ -27,7 +27,7 @@ git clone --recurse-submodules https://github.com/ruvnet/RuView.git
 ## Update to latest upstream
 
 ```bash
-git submodule update --remote --merge
+git submodule update --remote --recursive
 git add vendor/
 git commit -m "chore: update vendor submodules"
 ```
