@@ -48,7 +48,9 @@ impl AuthState {
         if s.is_empty() {
             AuthState { token: None }
         } else {
-            AuthState { token: Some(Arc::new(s)) }
+            AuthState {
+                token: Some(Arc::new(s)),
+            }
         }
     }
 
@@ -98,7 +100,17 @@ pub async fn require_bearer(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "));
+        // RFC 6750 §2.1 / RFC 7235 §2.1: the auth-scheme ("Bearer") is
+        // case-insensitive. Match it as such (and tolerate extra leading
+        // whitespace before the token) so a correct token isn't rejected
+        // just because a client sent `bearer`/`BEARER`. The token compare
+        // below stays exact + constant-time.
+        .and_then(|s| {
+            let (scheme, token) = s.split_once(' ')?;
+            scheme
+                .eq_ignore_ascii_case("Bearer")
+                .then(|| token.trim_start())
+        });
     let ok = supplied
         .map(|s| ct_eq(s.as_bytes(), expected.as_bytes()))
         .unwrap_or(false);
@@ -133,8 +145,7 @@ mod tests {
     }
 
     fn wrap(auth: AuthState) -> Router {
-        ok_handler()
-            .layer(axum::middleware::from_fn_with_state(auth, require_bearer))
+        ok_handler().layer(axum::middleware::from_fn_with_state(auth, require_bearer))
     }
 
     async fn status(router: Router, method: &str, path: &str, auth: Option<&str>) -> StatusCode {
@@ -153,20 +164,60 @@ mod tests {
     #[tokio::test]
     async fn middleware_is_no_op_when_token_unset() {
         let r = wrap(AuthState::default());
-        assert_eq!(status(r.clone(), "GET", "/api/v1/info", None).await, StatusCode::OK);
-        assert_eq!(status(r.clone(), "POST", "/api/v1/sensitive", None).await, StatusCode::OK);
-        assert_eq!(status(r.clone(), "GET", "/health", None).await, StatusCode::OK);
-        assert_eq!(status(r, "GET", "/ui/index.html", None).await, StatusCode::OK);
+        assert_eq!(
+            status(r.clone(), "GET", "/api/v1/info", None).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(r.clone(), "POST", "/api/v1/sensitive", None).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(r.clone(), "GET", "/health", None).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(r, "GET", "/ui/index.html", None).await,
+            StatusCode::OK
+        );
     }
 
     #[tokio::test]
     async fn enabled_blocks_api_without_bearer() {
         let r = wrap(AuthState::from_token("s3cr3t"));
-        assert_eq!(status(r.clone(), "GET", "/api/v1/info", None).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            status(r.clone(), "GET", "/api/v1/info", None).await,
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(
             status(r, "POST", "/api/v1/sensitive", None).await,
             StatusCode::UNAUTHORIZED
         );
+    }
+
+    #[tokio::test]
+    async fn accepts_case_insensitive_bearer_scheme() {
+        // RFC 6750 §2.1 / RFC 7235 §2.1: the auth-scheme is case-insensitive.
+        // A correct token must authenticate regardless of scheme casing or
+        // extra whitespace; a wrong token must still be rejected.
+        async fn req_status(auth_value: &str) -> StatusCode {
+            let r = wrap(AuthState::from_token("s3cr3t"));
+            let mut req = Request::builder()
+                .method("GET")
+                .uri("/api/v1/info")
+                .body(Body::empty())
+                .unwrap();
+            req.headers_mut()
+                .insert(AUTHORIZATION, auth_value.parse().unwrap());
+            r.oneshot(req).await.unwrap().status()
+        }
+        assert_eq!(req_status("Bearer s3cr3t").await, StatusCode::OK);
+        assert_eq!(req_status("bearer s3cr3t").await, StatusCode::OK);
+        assert_eq!(req_status("BEARER s3cr3t").await, StatusCode::OK);
+        assert_eq!(req_status("Bearer  s3cr3t").await, StatusCode::OK); // extra space
+        // Scheme leniency must NOT weaken the token check.
+        assert_eq!(req_status("bearer nope").await, StatusCode::UNAUTHORIZED);
+        assert_eq!(req_status("Basic s3cr3t").await, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -184,7 +235,10 @@ mod tests {
             .unwrap();
         req.headers_mut()
             .insert(AUTHORIZATION, "Basic s3cr3t".parse().unwrap());
-        assert_eq!(r.oneshot(req).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            r.oneshot(req).await.unwrap().status(),
+            StatusCode::UNAUTHORIZED
+        );
     }
 
     #[tokio::test]
@@ -205,15 +259,21 @@ mod tests {
         let r = wrap(AuthState::from_token("s3cr3t"));
         // Even with auth ON, `/health` and `/ui/*` are reachable without a token:
         // orchestrator probes and the local UI need to load unchallenged.
-        assert_eq!(status(r.clone(), "GET", "/health", None).await, StatusCode::OK);
-        assert_eq!(status(r, "GET", "/ui/index.html", None).await, StatusCode::OK);
+        assert_eq!(
+            status(r.clone(), "GET", "/health", None).await,
+            StatusCode::OK
+        );
+        assert_eq!(
+            status(r, "GET", "/ui/index.html", None).await,
+            StatusCode::OK
+        );
     }
 
     #[test]
     fn ct_eq_basics() {
         assert!(ct_eq(b"abc", b"abc"));
         assert!(!ct_eq(b"abc", b"abd"));
-        assert!(!ct_eq(b"abc", b"ab"));   // length mismatch
+        assert!(!ct_eq(b"abc", b"ab")); // length mismatch
         assert!(!ct_eq(b"", b"x"));
         assert!(ct_eq(b"", b""));
     }
