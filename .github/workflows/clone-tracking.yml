@@ -39,8 +39,12 @@ jobs:
           submodules: recursive
 
       - name: Fetch /traffic/clones + /traffic/views from GitHub
+        # NOTE: The default GITHUB_TOKEN cannot access the GitHub Traffic API.
+        # Use a personal access token (PAT) with `repo` scope stored as the
+        # TRAFFIC_PAT secret. Falls back to GITHUB_TOKEN if TRAFFIC_PAT is
+        # not set (which will return HTTP 403 — set the secret to fix it).
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_PAT || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p data
           gh api repos/${{ github.repository }}/traffic/clones > /tmp/clones.json
