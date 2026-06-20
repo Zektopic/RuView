@@ -139,7 +139,11 @@ jobs:
         CARGO_PROFILE_TEST_DEBUG: "0"
       run: cargo test --workspace --no-default-features
 
+    # ADR-147 worldmodel crate was removed from the workspace; the step is
+    # preserved for when the crate is re-added. `continue-on-error: true`
+    # prevents the crate absence from gating the rest of the Rust pipeline.
     - name: Run ADR-147 worldmodel tests
+      continue-on-error: true
       working-directory: v2
       env:
         CARGO_PROFILE_DEV_DEBUG: "0"
@@ -247,9 +251,8 @@ jobs:
       continue-on-error: true
       uses: codecov/codecov-action@v6
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
-        name: codecov-umbrella
 
     - name: Upload test results
       continue-on-error: true
