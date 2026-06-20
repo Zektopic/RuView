@@ -3595,6 +3595,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "futures",
  "homecore",
  "homecore-api",
  "homecore-assist",
@@ -3602,8 +3603,13 @@ dependencies = [
  "homecore-hap",
  "homecore-plugins",
  "homecore-recorder",
+ "http-body-util",
+ "reqwest 0.12.28",
+ "serde",
  "serde_json",
  "tokio",
+ "tower 0.5.3",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3767,6 +3773,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.26.4",
  "tower-service",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -6870,6 +6877,8 @@ dependencies = [
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
+ "quinn",
+ "rustls 0.23.37",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -6877,6 +6886,7 @@ dependencies = [
  "sync_wrapper 1.0.2",
  "tokio",
  "tokio-native-tls",
+ "tokio-rustls 0.26.4",
  "tower 0.5.3",
  "tower-http",
  "tower-service",
@@ -6884,6 +6894,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -7083,6 +7094,42 @@ dependencies = [
  "num-traits",
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "rufield-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rufield-fusion"
+version = "0.1.0"
+dependencies = [
+ "rufield-core",
+ "rufield-provenance",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "rufield-privacy"
+version = "0.1.0"
+dependencies = [
+ "rufield-core",
+]
+
+[[package]]
+name = "rufield-provenance"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "rufield-core",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -10835,7 +10882,7 @@ dependencies = [
 
 [[package]]
 name = "wifi-densepose-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -11046,6 +11093,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wifi-densepose-rufield"
+version = "0.3.0"
+dependencies = [
+ "rufield-core",
+ "rufield-fusion",
+ "rufield-privacy",
+ "rufield-provenance",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "wifi-densepose-ruvector"
 version = "0.3.2"
 dependencies = [
@@ -11067,7 +11126,7 @@ dependencies = [
 
 [[package]]
 name = "wifi-densepose-sensing-server"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "axum",
  "chrono",
@@ -11094,6 +11153,7 @@ dependencies = [
  "wifi-densepose-engine",
  "wifi-densepose-geo",
  "wifi-densepose-hardware",
+ "wifi-densepose-rufield",
  "wifi-densepose-signal",
  "wifi-densepose-wifiscan",
  "wifi-densepose-worldgraph",
@@ -11101,7 +11161,7 @@ dependencies = [
 
 [[package]]
 name = "wifi-densepose-signal"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "chrono",
  "criterion",
