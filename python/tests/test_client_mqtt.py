@@ -206,3 +206,53 @@ def test_on_connect_with_nonzero_rc_does_not_set_connected() -> None:
     stub = SimpleNamespace(subscribe=lambda pattern: None)
     c._on_connect(stub, None, None, 5)  # CONNACK fail
     assert c.connected is False
+
+
+# ─── Stop path ───────────────────────────────────────────────────────
+
+
+def test_client_stop_when_not_started(mocker: Any) -> None:
+    c = RuViewMqttClient()
+    mock_disconnect = mocker.patch.object(c._client, "disconnect")
+    mock_loop_stop = mocker.patch.object(c._client, "loop_stop")
+
+    c.stop()
+
+    mock_disconnect.assert_not_called()
+    mock_loop_stop.assert_not_called()
+
+
+def test_client_stop_when_started(mocker: Any) -> None:
+    c = RuViewMqttClient()
+    c._started = True
+    c._connected_event.set()
+
+    mock_disconnect = mocker.patch.object(c._client, "disconnect")
+    mock_loop_stop = mocker.patch.object(c._client, "loop_stop")
+
+    c.stop()
+
+    mock_disconnect.assert_called_once()
+    mock_loop_stop.assert_called_once()
+    assert c._started is False
+    assert c.connected is False
+
+    # Idempotency check: calling stop() again should be a no-op
+    c.stop()
+    mock_disconnect.assert_called_once()
+    mock_loop_stop.assert_called_once()
+
+
+def test_client_stop_handles_exceptions(mocker: Any) -> None:
+    c = RuViewMqttClient()
+    c._started = True
+    c._connected_event.set()
+
+    mocker.patch.object(c._client, "disconnect", side_effect=RuntimeError("disconnect failed"))
+    mocker.patch.object(c._client, "loop_stop", side_effect=RuntimeError("loop_stop failed"))
+
+    # Should not raise
+    c.stop()
+
+    assert c._started is False
+    assert c.connected is False
