@@ -302,8 +302,8 @@ function computeMetrics() {
       for (let j = i + 1; j < allChannelData.length; j++) {
         const d1 = allChannelData[i];
         const d2 = allChannelData[j];
-        const cc1 = [...nodes.values()].find(n => n.nodeId === d1.nodeId)?.channels.get(d1.channel);
-        const cc2 = [...nodes.values()].find(n => n.nodeId === d2.nodeId)?.channels.get(d2.channel);
+        const cc1 = nodes.get(d1.nodeId)?.channels.get(d1.channel);
+        const cc2 = nodes.get(d2.nodeId)?.channels.get(d2.channel);
         if (!cc1 || !cc2) continue;
 
         const f1 = cc1.frames[cc1.frames.length - 1];
