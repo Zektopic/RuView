@@ -9,7 +9,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  NODE_VERSION: '20' # ADR-265: all Node packages in this repo declare engines >= 20
+  NODE_VERSION: '24' # ADR-265: all Node packages in this repo declare engines >= 20
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -83,6 +83,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
+<<<<<<< Updated upstream
+=======
+      with:
+        submodules: recursive
+>>>>>>> Stashed changes
       # ADR-262 P1: `wifi-densepose-rufield` path-deps the `vendor/rufield`
       # submodule. Without a recursive checkout the workspace build fails to
       # resolve those path deps in CI even though it passes locally.
