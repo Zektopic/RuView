@@ -168,21 +168,32 @@ async def _get_database_status(settings: Settings) -> Dict[str, Any]:
             # Whitelist of allowed table names to prevent SQL injection
             allowed_table_names = set(tables.keys())
             
+            from sqlalchemy import union_all, literal
+
+            valid_tables = {}
             for table_name, model in tables.items():
+                if table_name not in allowed_table_names:
+                    db_status["tables"][table_name] = {"error": "Invalid table name"}
+                else:
+                    valid_tables[table_name] = model
+
+            if valid_tables:
                 try:
-                    # Validate table_name against whitelist to prevent SQL injection
-                    if table_name not in allowed_table_names:
-                        db_status["tables"][table_name] = {"error": "Invalid table name"}
-                        continue
+                    queries = [
+                        select(literal(t_name).label("table_name"), func.count().label("count")).select_from(m)
+                        for t_name, m in valid_tables.items()
+                    ]
+
+                    union_query = union_all(*queries)
+
+                    result = await session.execute(union_query)
+                    rows = result.all()
                     
-                    # Use SQLAlchemy ORM model for safe query instead of raw SQL
-                    result = await session.execute(
-                        select(func.count()).select_from(model)
-                    )
-                    count = result.scalar()
-                    db_status["tables"][table_name] = {"count": count}
+                    for t_name, count in rows:
+                        db_status["tables"][t_name] = {"count": count}
                 except Exception as e:
-                    db_status["tables"][table_name] = {"error": str(e)}
+                    for t_name in valid_tables:
+                        db_status["tables"][t_name] = {"error": str(e)}
         
     except Exception as e:
         db_status["error"] = str(e)
