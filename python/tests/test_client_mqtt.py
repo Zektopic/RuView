@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -211,10 +212,10 @@ def test_on_connect_with_nonzero_rc_does_not_set_connected() -> None:
 # ─── Stop path ───────────────────────────────────────────────────────
 
 
-def test_client_stop_when_not_started(mocker: Any) -> None:
+@patch("paho.mqtt.client.Client.disconnect")
+@patch("paho.mqtt.client.Client.loop_stop")
+def test_client_stop_when_not_started(mock_loop_stop: Any, mock_disconnect: Any) -> None:
     c = RuViewMqttClient()
-    mock_disconnect = mocker.patch.object(c._client, "disconnect")
-    mock_loop_stop = mocker.patch.object(c._client, "loop_stop")
 
     c.stop()
 
@@ -222,13 +223,12 @@ def test_client_stop_when_not_started(mocker: Any) -> None:
     mock_loop_stop.assert_not_called()
 
 
-def test_client_stop_when_started(mocker: Any) -> None:
+@patch("paho.mqtt.client.Client.disconnect")
+@patch("paho.mqtt.client.Client.loop_stop")
+def test_client_stop_when_started(mock_loop_stop: Any, mock_disconnect: Any) -> None:
     c = RuViewMqttClient()
     c._started = True
     c._connected_event.set()
-
-    mock_disconnect = mocker.patch.object(c._client, "disconnect")
-    mock_loop_stop = mocker.patch.object(c._client, "loop_stop")
 
     c.stop()
 
@@ -243,13 +243,12 @@ def test_client_stop_when_started(mocker: Any) -> None:
     mock_loop_stop.assert_called_once()
 
 
-def test_client_stop_handles_exceptions(mocker: Any) -> None:
+@patch("paho.mqtt.client.Client.disconnect", side_effect=RuntimeError("disconnect failed"))
+@patch("paho.mqtt.client.Client.loop_stop", side_effect=RuntimeError("loop_stop failed"))
+def test_client_stop_handles_exceptions(mock_loop_stop: Any, mock_disconnect: Any) -> None:
     c = RuViewMqttClient()
     c._started = True
     c._connected_event.set()
-
-    mocker.patch.object(c._client, "disconnect", side_effect=RuntimeError("disconnect failed"))
-    mocker.patch.object(c._client, "loop_stop", side_effect=RuntimeError("loop_stop failed"))
 
     # Should not raise
     c.stop()
