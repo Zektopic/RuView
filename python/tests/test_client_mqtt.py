@@ -206,3 +206,79 @@ def test_on_connect_with_nonzero_rc_does_not_set_connected() -> None:
     stub = SimpleNamespace(subscribe=lambda pattern: None)
     c._on_connect(stub, None, None, 5)  # CONNACK fail
     assert c.connected is False
+
+# ─── Publish path ────────────────────────────────────────────────────
+
+
+def test_publish_encodes_dict_as_json() -> None:
+    c = RuViewMqttClient()
+    published: list[Any] = []
+
+    c._client = SimpleNamespace(
+        publish=lambda topic, payload, qos, retain: (
+            published.append((topic, payload, qos, retain)) or
+            SimpleNamespace(rc=0)
+        )
+    )
+
+    c.publish("my/topic", {"a": 1})
+    assert len(published) == 1
+    assert published[0] == ("my/topic", '{"a": 1}', 0, False)
+
+
+def test_publish_encodes_list_as_json() -> None:
+    c = RuViewMqttClient()
+    published: list[Any] = []
+
+    c._client = SimpleNamespace(
+        publish=lambda topic, payload, qos, retain: (
+            published.append((topic, payload, qos, retain)) or
+            SimpleNamespace(rc=0)
+        )
+    )
+
+    c.publish("my/topic", [1, 2])
+    assert len(published) == 1
+    assert published[0] == ("my/topic", '[1, 2]', 0, False)
+
+
+def test_publish_passes_bytes_and_strings_through() -> None:
+    c = RuViewMqttClient()
+    published: list[Any] = []
+
+    c._client = SimpleNamespace(
+        publish=lambda topic, payload, qos, retain: (
+            published.append(payload) or
+            SimpleNamespace(rc=0)
+        )
+    )
+
+    c.publish("my/topic", b"raw-bytes")
+    c.publish("my/topic", "raw-string")
+    assert published == [b"raw-bytes", "raw-string"]
+
+
+def test_publish_passes_qos_and_retain() -> None:
+    c = RuViewMqttClient()
+    published: list[Any] = []
+
+    c._client = SimpleNamespace(
+        publish=lambda topic, payload, qos, retain: (
+            published.append((qos, retain)) or
+            SimpleNamespace(rc=0)
+        )
+    )
+
+    c.publish("my/topic", "data", qos=2, retain=True)
+    assert published == [(2, True)]
+
+
+def test_publish_raises_runtime_error_on_failure() -> None:
+    c = RuViewMqttClient()
+
+    c._client = SimpleNamespace(
+        publish=lambda topic, payload, qos, retain: SimpleNamespace(rc=1)
+    )
+
+    with pytest.raises(RuntimeError, match=r"mqtt publish failed: topic=my/topic rc=1"):
+        c.publish("my/topic", "data")
