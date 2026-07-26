@@ -131,6 +131,19 @@ def test_listener_decodes_bytes_payload() -> None:
     assert evt.state == "ON"
 
 
+def test_listener_decodes_invalid_utf8_bytes_payload() -> None:
+    listener = SemanticPrimitiveListener()
+    evt = listener.handle_mqtt_message(
+        "homeassistant/binary_sensor/wifi_densepose_aabb/room_active/state",
+        b"\xff\xfe\xff",
+    )
+    assert evt is not None
+    assert evt.kind is SemanticPrimitive.RoomActive
+    assert evt.node_id == "aabb"
+    assert evt.state == ""
+    assert evt.raw == {}
+
+
 def test_listener_ignores_non_state_topics() -> None:
     listener = SemanticPrimitiveListener()
     assert listener.handle_mqtt_message(
