@@ -2004,12 +2004,36 @@ async function main() {
   const poseDecoder = new PoseDecoder5(CONFIG.embeddingDim);
 
   // Collect pose training data from weak labels
+  const tlByNode = {};
+  for (const f of labeledTimeline) {
+    if (!tlByNode[f.nodeId]) tlByNode[f.nodeId] = [];
+    tlByNode[f.nodeId].push(f);
+  }
+  for (const nodeId in tlByNode) {
+    tlByNode[nodeId].sort((a, b) => a.timestamp - b.timestamp);
+  }
+
   const poseTrainData = [];
   for (const ef of encodedFeatures) {
-    // Find corresponding timeline frame
-    const tlFrame = labeledTimeline.find(f =>
-      f.nodeId === ef.nodeId && Math.abs(f.timestamp - ef.timestamp) < 0.1
-    );
+    // Find corresponding timeline frame via binary search
+    let tlFrame = undefined;
+    const nodeTl = tlByNode[ef.nodeId];
+    if (nodeTl) {
+      let left = 0, right = nodeTl.length - 1, firstMatch = -1;
+      while (left <= right) {
+        const mid = (left + right) >> 1;
+        if (nodeTl[mid].timestamp > ef.timestamp - 0.1) {
+          firstMatch = mid;
+          right = mid - 1;
+        } else {
+          left = mid + 1;
+        }
+      }
+      if (firstMatch !== -1 && nodeTl[firstMatch].timestamp < ef.timestamp + 0.1) {
+        tlFrame = nodeTl[firstMatch];
+      }
+    }
+
     if (tlFrame && tlFrame.labels && tlFrame.labels.poseProxy5) {
       poseTrainData.push({
         embedding: ef.embedding,
