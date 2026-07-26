@@ -2003,13 +2003,64 @@ async function main() {
   console.log('\n[8/12] Phase 3: Pose proxy training (5-keypoint, no camera)...');
   const poseDecoder = new PoseDecoder5(CONFIG.embeddingDim);
 
+  // Pre-index timeline frames by nodeId and sort by timestamp for O(log N) lookup
+  const nodeFramesSorted = new Map();
+  for (let i = 0; i < labeledTimeline.length; i++) {
+    const f = labeledTimeline[i];
+    if (!nodeFramesSorted.has(f.nodeId)) nodeFramesSorted.set(f.nodeId, []);
+    // Keep track of original index to preserve `find()` semantics exactly
+    nodeFramesSorted.get(f.nodeId).push({ f, index: i });
+  }
+
+  for (const frames of nodeFramesSorted.values()) {
+    frames.sort((a, b) => a.f.timestamp - b.f.timestamp);
+  }
+
   // Collect pose training data from weak labels
   const poseTrainData = [];
   for (const ef of encodedFeatures) {
     // Find corresponding timeline frame
-    const tlFrame = labeledTimeline.find(f =>
-      f.nodeId === ef.nodeId && Math.abs(f.timestamp - ef.timestamp) < 0.1
-    );
+    let tlFrame = undefined;
+    const frames = nodeFramesSorted.get(ef.nodeId);
+
+    if (frames && frames.length > 0) {
+      let left = 0;
+      let right = frames.length - 1;
+
+      // Binary search for closest timestamp
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (frames[mid].f.timestamp < ef.timestamp) {
+          left = mid + 1;
+        } else {
+          right = mid - 1;
+        }
+      }
+
+      // Scan around the insertion point for all matches within 0.1 and pick the lowest original index
+      let minIndexMatch = null;
+
+      let scanIdx = left;
+      while (scanIdx < frames.length && frames[scanIdx].f.timestamp - ef.timestamp < 0.1) {
+        if (!minIndexMatch || frames[scanIdx].index < minIndexMatch.index) {
+          minIndexMatch = frames[scanIdx];
+        }
+        scanIdx++;
+      }
+
+      scanIdx = left - 1;
+      while (scanIdx >= 0 && ef.timestamp - frames[scanIdx].f.timestamp < 0.1) {
+        if (!minIndexMatch || frames[scanIdx].index < minIndexMatch.index) {
+          minIndexMatch = frames[scanIdx];
+        }
+        scanIdx--;
+      }
+
+      if (minIndexMatch) {
+        tlFrame = minIndexMatch.f;
+      }
+    }
+
     if (tlFrame && tlFrame.labels && tlFrame.labels.poseProxy5) {
       poseTrainData.push({
         embedding: ef.embedding,
