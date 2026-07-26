@@ -25,7 +25,6 @@ import sys
 import threading
 import time
 import urllib.request
-import urllib.error
 
 try:
     import numpy as np
