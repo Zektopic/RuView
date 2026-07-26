@@ -15,7 +15,6 @@ import argparse
 import collections
 import re
 import serial
-import sys
 import time
 
 RE_BR = re.compile(r"'Real-time respiratory rate'.*?(\d+\.?\d*)", re.IGNORECASE)
