@@ -23,7 +23,6 @@ import collections
 import math
 import re
 import serial
-import sys
 import time
 
 try:
