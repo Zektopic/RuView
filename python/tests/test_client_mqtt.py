@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -206,3 +207,22 @@ def test_on_connect_with_nonzero_rc_does_not_set_connected() -> None:
     stub = SimpleNamespace(subscribe=lambda pattern: None)
     c._on_connect(stub, None, None, 5)  # CONNACK fail
     assert c.connected is False
+
+
+# ─── wait_connected ──────────────────────────────────────────────────
+
+
+def test_wait_connected_default_timeout() -> None:
+    c = RuViewMqttClient()
+    with mock.patch.object(c._connected_event, "wait", return_value=True) as mock_wait:
+        result = c.wait_connected()
+        mock_wait.assert_called_once_with(timeout=5.0)
+        assert result is True
+
+
+def test_wait_connected_custom_timeout() -> None:
+    c = RuViewMqttClient()
+    with mock.patch.object(c._connected_event, "wait", return_value=False) as mock_wait:
+        result = c.wait_connected(timeout=2.5)
+        mock_wait.assert_called_once_with(timeout=2.5)
+        assert result is False
