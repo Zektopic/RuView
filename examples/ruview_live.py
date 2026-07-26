@@ -21,7 +21,6 @@ import json
 import math
 import re
 import serial
-import sys
 import threading
 import time
 import urllib.request
