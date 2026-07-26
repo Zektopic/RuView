@@ -20,7 +20,6 @@ import collections
 import math
 import re
 import serial
-import sys
 import time
 
 RE_HR = re.compile(r"'Real-time heart rate'.*?(\d+\.?\d*)\s*bpm", re.IGNORECASE)
