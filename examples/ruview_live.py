@@ -24,8 +24,7 @@ import serial
 import sys
 import threading
 import time
-import urllib.request
-import urllib.error
+from urllib.request import Request, urlopen
 
 try:
     import numpy as np
@@ -335,13 +334,13 @@ class SeedBridge:
 
         def _post():
             try:
-                req = urllib.request.Request(
+                req = Request(
                     f"{self.base_url}/api/v1/store/ingest",
                     data=payload,
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
-                urllib.request.urlopen(req, timeout=5)
+                urlopen(req, timeout=5)
             except Exception:
                 pass  # silently ignore connection errors
 
@@ -350,11 +349,11 @@ class SeedBridge:
     def get_drift(self):
         """GET drift status from Seed. Returns dict or None."""
         try:
-            req = urllib.request.Request(
+            req = Request(
                 f"{self.base_url}/api/v1/sensor/drift/status",
                 method="GET",
             )
-            resp = urllib.request.urlopen(req, timeout=3)
+            resp = urlopen(req, timeout=3)
             data = json.loads(resp.read().decode())
             with self._drift_lock:
                 self._last_drift = data
