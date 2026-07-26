@@ -206,3 +206,32 @@ def test_on_connect_with_nonzero_rc_does_not_set_connected() -> None:
     stub = SimpleNamespace(subscribe=lambda pattern: None)
     c._on_connect(stub, None, None, 5)  # CONNACK fail
     assert c.connected is False
+
+
+# ─── subscribe_registered ────────────────────────────────────────────
+
+
+def test_subscribe_registered_before_start_does_nothing() -> None:
+    c = RuViewMqttClient()
+    c.on_message("topic/1", lambda t, p: None)
+    c.on_message("topic/2", lambda t, p: None)
+
+    subscribed: list[str] = []
+    c._client = SimpleNamespace(subscribe=lambda pattern: subscribed.append(pattern))  # type: ignore
+
+    c.subscribe_registered()
+    assert subscribed == []
+
+
+def test_subscribe_registered_after_start_subscribes_to_all() -> None:
+    c = RuViewMqttClient()
+    c.on_message("topic/1", lambda t, p: None)
+    c.on_message("topic/2", lambda t, p: None)
+
+    subscribed: list[str] = []
+    c._client = SimpleNamespace(subscribe=lambda pattern: subscribed.append(pattern))  # type: ignore
+
+    c._started = True
+    c.subscribe_registered()
+
+    assert set(subscribed) == {"topic/1", "topic/2"}
