@@ -109,6 +109,22 @@ def test_listener_decodes_plain_state_string() -> None:
     assert evt.explanation == ()
 
 
+def test_listener_decodes_malformed_json_string() -> None:
+    """A malformed JSON string should fall back to the plain string state path
+    and not crash the listener (JSONDecodeError test)."""
+    listener = SemanticPrimitiveListener()
+    payload = '{"bad": '
+    evt = listener.handle_mqtt_message(
+        "homeassistant/binary_sensor/wifi_densepose_aabb/room_active/state",
+        payload,
+    )
+    assert evt is not None
+    assert evt.state == payload
+    assert evt.raw == {"state": payload}
+    assert evt.confidence == 0.0
+    assert evt.explanation == ()
+
+
 def test_listener_decodes_numeric_sensor_state() -> None:
     """fall_risk_elevated is a 0–100 sensor — verify numeric string."""
     listener = SemanticPrimitiveListener()
