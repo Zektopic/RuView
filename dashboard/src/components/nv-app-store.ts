@@ -97,7 +97,7 @@ export class NvAppStore extends LitElement {
     .chip .swatch {
       width: 7px; height: 7px; border-radius: 50%;
     }
-    .chip .count { color: var(--ink-3); font-size: 10px; }
+    .chip .count { color: var(--ink-2); font-size: 10px; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -139,7 +139,7 @@ export class NvAppStore extends LitElement {
     }
     .badge {
       padding: 1px 6px; border-radius: 4px;
-      background: var(--bg-3); color: var(--ink-3);
+      background: var(--bg-3); color: var(--ink-2);
       border: 1px solid var(--line);
     }
     .badge.cat { color: var(--accent); border-color: oklch(0.78 0.14 70 / 0.3); }
@@ -149,7 +149,7 @@ export class NvAppStore extends LitElement {
     .badge.budget { color: var(--accent-2); border-color: oklch(0.78 0.12 195 / 0.3); }
     .badge.rt-running { color: var(--ok); border-color: oklch(0.78 0.14 145 / 0.5); background: oklch(0.78 0.14 145 / 0.08); }
     .badge.rt-simulated { color: var(--accent); border-color: oklch(0.78 0.14 70 / 0.5); background: oklch(0.78 0.14 70 / 0.08); }
-    .badge.rt-mesh-only { color: var(--ink-3); border-color: var(--line); }
+    .badge.rt-mesh-only { color: var(--ink-2); border-color: var(--line); }
     .events-feed {
       background: var(--bg-2);
       border: 1px solid var(--line);
@@ -389,7 +389,7 @@ export class NvAppStore extends LitElement {
           <span class="events">${app.crate}</span>
           ${evCount > 0 ? html`<span class="card-events-count">⚡ ${evCount} ev</span>` : ''}
           <span class="toggle ${active ? 'on' : ''}" role="switch"
-            aria-checked=${active}
+            aria-checked=${active} aria-label="Toggle ${app.crate}"
             data-app-toggle=${app.id}
             @click=${() => this.toggle(app)}></span>
         </div>
