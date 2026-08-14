@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 import json
 import sys
+import aiofiles
 from datetime import datetime
 from typing import Dict, Any, List
 import time
@@ -335,8 +336,8 @@ class MonitoringTester:
                     print(f"  - {result['test']}: {result.get('error', 'Unknown error')}")
         
         # Save results
-        with open("monitoring_test_results.json", "w") as f:
-            json.dump({
+        async with aiofiles.open("monitoring_test_results.json", "w") as f:
+            data = {
                 "timestamp": datetime.now().isoformat(),
                 "base_url": self.base_url,
                 "summary": {
@@ -345,7 +346,8 @@ class MonitoringTester:
                     "failed": failed
                 },
                 "results": self.results
-            }, f, indent=2)
+            }
+            await f.write(json.dumps(data, indent=2))
         
         print("\nResults saved to monitoring_test_results.json")
         
