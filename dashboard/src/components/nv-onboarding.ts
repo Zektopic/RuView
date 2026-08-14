@@ -33,7 +33,7 @@ const STEPS: TourStep[] = [
         This 60-second tour walks you through the four panels, the App Store,
         the Ghost Murmur research view, and the determinism contract that
         makes nvsim distinctive.</p>
-      <p style="font-size:11.5px; color:var(--ink-3); line-height:1.5; margin-top:14px;">
+      <p style="font-size:11.5px; color:var(--ink-2); line-height:1.5; margin-top:14px;">
         Press <kbd>Esc</kbd> any time to skip. You can replay this tour from
         <b>Settings → Help</b>.</p>`,
     cta: { label: 'Start the tour →' },
@@ -224,7 +224,7 @@ export class NvOnboarding extends LitElement {
     .h .step-label {
       font-family: var(--mono);
       font-size: 10.5px;
-      color: var(--ink-3);
+      color: var(--ink-2);
       margin-top: 4px;
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -299,7 +299,7 @@ export class NvOnboarding extends LitElement {
     .progress-label {
       font-family: var(--mono);
       font-size: 10px;
-      color: var(--ink-3);
+      color: var(--ink-2);
     }
     button.primary, button.ghost {
       padding: 9px 16px;
