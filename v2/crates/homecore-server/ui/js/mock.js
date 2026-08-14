@@ -124,8 +124,11 @@ const SEEDS = [
     warnings: ['stale firmware version (0.6.9 < 0.7.3)', 'offline > 1h'],
   },
 ];
+
+const SEED_MAP = new Map(SEEDS.map((s) => [s.device_id, s]));
+
 export function seeds() { return SEEDS.map((s) => ({ ...s })); }
-export function seed(id) { return SEEDS.find((s) => s.device_id === id) || null; }
+export function seed(id) { return SEED_MAP.get(id) || null; }
 
 // ── ESP32 node warnings (§4.1) ──────────────────────────────────────
 export function esp32Warnings() {
