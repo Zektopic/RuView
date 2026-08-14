@@ -8,6 +8,7 @@ import os
 import shutil
 import gzip
 import json
+import aiofiles
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -240,8 +241,8 @@ class ConfigurationBackup(BackupTask):
             }
             
             settings_file = temp_dir / "settings_dump.json"
-            with open(settings_file, 'w') as f:
-                json.dump(settings_dump, f, indent=2)
+            async with aiofiles.open(settings_file, 'w') as f:
+                await f.write(json.dumps(settings_dump, indent=2))
             
             # Create tar.gz archive
             tar_cmd = [
