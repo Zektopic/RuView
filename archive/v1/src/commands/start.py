@@ -311,12 +311,14 @@ async def _run_as_daemon(config: dict, pid_file: Path) -> None:
     sys.stderr.flush()
     
     # Redirect stdin, stdout, stderr to /dev/null
-    with open('/dev/null', 'r') as f:
-        os.dup2(f.fileno(), sys.stdin.fileno())
+    fd_in = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(fd_in, sys.stdin.fileno())
+    os.close(fd_in)
     
-    with open('/dev/null', 'w') as f:
-        os.dup2(f.fileno(), sys.stdout.fileno())
-        os.dup2(f.fileno(), sys.stderr.fileno())
+    fd_out = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(fd_out, sys.stdout.fileno())
+    os.dup2(fd_out, sys.stderr.fileno())
+    os.close(fd_out)
     
     # Create uvicorn server
     server = uvicorn.Server(uvicorn.Config(**config))
