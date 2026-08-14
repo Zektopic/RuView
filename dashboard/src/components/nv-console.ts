@@ -2,6 +2,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, query } from 'lit/decorators.js';
 import { effect } from '@preact/signals-core';
+import DOMPurify from 'dompurify';
 import {
   consoleLines, consoleFilter, consolePaused, pushLog,
   getClient, seed, theme, expectedWitness, witnessHex, witnessVerified,
@@ -251,7 +252,7 @@ export class NvConsole extends LitElement {
           return html`<div class="line ${l.level}">
             <div class="ts">${tsStr}</div>
             <div class="lvl">${l.level}</div>
-            <div class="msg" .innerHTML=${l.msg}></div>
+            <div class="msg" .innerHTML=${DOMPurify.sanitize(l.msg)}></div>
           </div>`;
         })}
       </div>
