@@ -2,6 +2,7 @@
 Start command implementation for WiFi-DensePose API
 """
 
+import aiofiles
 import asyncio
 import os
 import signal
@@ -311,10 +312,10 @@ async def _run_as_daemon(config: dict, pid_file: Path) -> None:
     sys.stderr.flush()
     
     # Redirect stdin, stdout, stderr to /dev/null
-    with open('/dev/null', 'r') as f:
+    async with aiofiles.open('/dev/null', 'r') as f:
         os.dup2(f.fileno(), sys.stdin.fileno())
     
-    with open('/dev/null', 'w') as f:
+    async with aiofiles.open('/dev/null', 'w') as f:
         os.dup2(f.fileno(), sys.stdout.fileno())
         os.dup2(f.fileno(), sys.stderr.fileno())
     
