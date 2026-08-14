@@ -1,6 +1,7 @@
 /* Modal dialog — opened via window.dispatchEvent('nv-modal', { title, body, buttons }). */
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import DOMPurify from 'dompurify';
 
 interface ModalButton {
   label: string;
@@ -137,7 +138,7 @@ export class NvModal extends LitElement {
           <div class="ttl">${this.mTitle}</div>
           <button class="close" @click=${() => this.close()}>×</button>
         </div>
-        <div class="body" .innerHTML=${this.mBody}></div>
+        <div class="body" .innerHTML=${DOMPurify.sanitize(this.mBody)}></div>
         <div class="f">
           ${this.buttons.map((b) => html`
             <button class=${b.variant ?? ''} @click=${() => this.clickBtn(b)}>${b.label}</button>

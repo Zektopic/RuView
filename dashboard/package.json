@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@preact/signals-core": "^1.8.0",
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.4.13",
     "lit": "^3.2.1",
     "workbox-window": "^7.4.0"
   },
