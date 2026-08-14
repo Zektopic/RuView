@@ -451,17 +451,22 @@ class AuthRateLimitTester:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"auth_rate_limit_test_results_{timestamp}.json"
         
-        with open(filename, "w") as f:
-            json.dump({
-                "test_run": {
-                    "timestamp": datetime.now().isoformat(),
-                    "base_url": self.base_url,
-                    "total_tests": total,
-                    "passed": passed,
-                    "failed": failed
-                },
-                "results": self.results
-            }, f, indent=2)
+        data_to_save = {
+            "test_run": {
+                "timestamp": datetime.now().isoformat(),
+                "base_url": self.base_url,
+                "total_tests": total,
+                "passed": passed,
+                "failed": failed
+            },
+            "results": self.results
+        }
+
+        def save_file():
+            with open(filename, "w") as f:
+                json.dump(data_to_save, f, indent=2)
+
+        await asyncio.to_thread(save_file)
         
         print(f"\nResults saved to: {filename}")
         
