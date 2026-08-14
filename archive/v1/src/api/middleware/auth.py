@@ -57,6 +57,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Extract and validate token
         token = self._extract_token(request)
         
+        client_ip = request.client.host if request.client else "unknown"
+
         if token:
             try:
                 # Verify token and add user info to request state
@@ -64,10 +66,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request.state.user = user_data
                 request.state.authenticated = True
                 
-                logger.debug(f"Authenticated user: {user_data.get('id')}")
+                logger.info(f"Authentication successful for user: {user_data.get('id')} from IP: {client_ip} to {request.url.path}")
                 
             except Exception as e:
-                logger.warning(f"Token validation failed: {e}")
+                logger.warning(f"Authentication failed from IP: {client_ip} to {request.url.path} - Token validation error: {e}")
                 
                 # For protected paths, return 401
                 if self._is_protected_path(request.url.path):
@@ -88,6 +90,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         else:
             # No token provided
             if self._is_protected_path(request.url.path):
+                logger.warning(f"Unauthenticated access attempt from IP: {client_ip} to protected path: {request.url.path}")
                 return JSONResponse(
                     status_code=401,
                     content={
@@ -223,9 +226,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             raise ValueError(f"JWT validation failed: {e}")
         except Exception as e:
             raise ValueError(f"Token verification error: {e}")
-    
-    # TODO: Wire up authentication event logging in dispatch() for
-    # security monitoring (login failures, token expiry, etc.).
 
 
 class TokenBlacklist:
