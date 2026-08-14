@@ -144,8 +144,9 @@ export class NvScene extends LitElement {
     super.connectedCallback();
     // Restore drag positions if any are persisted.
     if (scenePositions.value.length > 0) {
+      const savedMap = new Map(scenePositions.value.map(p => [p.id, p]));
       this.items = this.items.map((it) => {
-        const saved = scenePositions.value.find((p) => p.id === it.id);
+        const saved = savedMap.get(it.id);
         return saved ? { ...it, x: saved.x, y: saved.y } : it;
       });
     }
