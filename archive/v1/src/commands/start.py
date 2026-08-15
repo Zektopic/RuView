@@ -2,6 +2,7 @@
 Start command implementation for WiFi-DensePose API
 """
 
+import aiofiles
 import asyncio
 import os
 import signal
