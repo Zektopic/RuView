@@ -321,8 +321,11 @@ class DataExportBackup(BackupTask):
         export_data["tables"]["pose_detections_recent"] = pose_data
         
         # Write compressed JSON
-        with gzip.open(backup_path, 'wt', encoding='utf-8') as f:
-            json.dump(export_data, f, indent=2, default=str)
+        def _write_json_sync():
+            with gzip.open(backup_path, 'wt', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, default=str)
+
+        await asyncio.to_thread(_write_json_sync)
         
         backup_size_mb = self._get_file_size_mb(backup_path)
         
