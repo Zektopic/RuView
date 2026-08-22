@@ -4,12 +4,10 @@ Main application entry point for WiFi-DensePose API
 """
 
 import sys
-import os
 import asyncio
 import logging
 import signal
 from pathlib import Path
-from typing import Optional
 
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent))
