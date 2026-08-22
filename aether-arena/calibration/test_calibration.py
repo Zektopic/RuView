@@ -6,7 +6,6 @@ Exercises the committed CLI end-to-end on synthetic data (CPU, no GPU, no real c
 
 Run:  python test_calibration.py    (or via pytest)
 """
-import json
 import subprocess
 import sys
 import tempfile
