@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from typing import Dict, List, Tuple, Optional
-from collections import OrderedDict
 
 class CSIPhaseProcessor:
     """
