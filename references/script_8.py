@@ -1,6 +1,5 @@
 # Create comprehensive implementation summary and results CSV
 import csv
-import numpy as np
 
 # System specifications and performance data
 system_specs = {
