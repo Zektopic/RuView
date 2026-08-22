@@ -44,7 +44,6 @@ import csv
 import io
 import json
 import os
-import struct
 import subprocess
 import sys
 import tempfile
