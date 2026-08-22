@@ -4,7 +4,6 @@ FastAPI application factory and configuration
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +16,6 @@ from src.config.settings import Settings
 from src.services.orchestrator import ServiceOrchestrator
 from src.middleware.auth import AuthenticationMiddleware
 from src.middleware.rate_limit import RateLimitMiddleware
-from src.middleware.error_handler import ErrorHandlingMiddleware
 from src.api.routers import pose, stream, health
 from src.api.websocket.connection_manager import connection_manager
 
