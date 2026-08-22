@@ -2,10 +2,7 @@
 # Based on "DensePose From WiFi" by Carnegie Mellon University
 
 import numpy as np
-import math
-from typing import Dict, List, Tuple, Optional
-from collections import OrderedDict
-import json
+from typing import Tuple
 
 class CSIPhaseProcessor:
     """
