@@ -38,10 +38,10 @@ use wifi_densepose_bfld::{PrivacyClass, PrivacyMode};
 use wifi_densepose_engine::{AdapterInfo, EngineError, StreamingEngine, TrustedOutput};
 use wifi_densepose_geo::types::GeoRegistration;
 use wifi_densepose_signal::ruvsense::fusion_quality::CalibrationId;
-use wifi_densepose_signal::ruvsense::multistatic::MultistaticConfig;
+use wifi_densepose_signal::ruvsense::multistatic::{MultistaticConfig, PhaseFusion};
 use wifi_densepose_worldgraph::WorldId;
 
-use super::multistatic_bridge::node_frames_from_states;
+use super::multistatic_bridge::node_frames_from_states_with_guard;
 use super::NodeState;
 
 /// Minimum spacing between engine-error warn logs (errors are still counted
@@ -53,6 +53,8 @@ const ENGINE_ERROR_WARN_INTERVAL: Duration = Duration::from_secs(10);
 /// live sensing loop publishes beliefs into.
 pub struct EngineBridge {
     engine: StreamingEngine,
+    /// Hard timestamp guard shared by cohort selection and engine validation.
+    guard_interval_us: u64,
     room: WorldId,
     /// Nodes already wired into the WorldGraph as sensors (by `node_id`).
     registered_nodes: HashMap<u8, WorldId>,
@@ -75,6 +77,8 @@ pub struct EngineBridge {
     engine_error_count: u64,
     /// Last time an engine error was actually logged (rate limiter).
     last_error_warn_at: Option<Instant>,
+    /// Phase-combining mode of the most recent successful cycle (#1752).
+    phase_fusion: Option<PhaseFusion>,
 }
 
 impl EngineBridge {
@@ -94,6 +98,11 @@ impl EngineBridge {
         room_name: &str,
         multistatic_cfg: Option<MultistaticConfig>,
     ) -> Self {
+        let guard_interval_us = multistatic_cfg
+            .as_ref()
+            .map_or_else(|| MultistaticConfig::default().guard_interval_us, |cfg| {
+                cfg.guard_interval_us
+            });
         let mut engine = StreamingEngine::new(mode, model_version, GeoRegistration::default());
         if let Some(cfg) = multistatic_cfg {
             engine.set_multistatic_config(cfg);
@@ -101,6 +110,7 @@ impl EngineBridge {
         let room = engine.add_room(room_area_id, room_name);
         Self {
             engine,
+            guard_interval_us,
             room,
             registered_nodes: HashMap::new(),
             calibration: CalibrationId(0x5256_0001), // "RV\0\x01" — placeholder epoch
@@ -110,6 +120,7 @@ impl EngineBridge {
             demoted: false,
             engine_error_count: 0,
             last_error_warn_at: None,
+            phase_fusion: None,
         }
     }
 
@@ -122,6 +133,21 @@ impl EngineBridge {
     /// loop; see `WorldGraph::prune_semantic_states`).
     pub fn set_semantic_retention(&mut self, max_states: usize) {
         self.engine.set_semantic_retention(max_states);
+    }
+
+    /// Give the governed fuser the `--node-positions` map, keyed by node id.
+    /// The fuser resolves each frame's position by its `node_id`, so nodes
+    /// discovered later pick up their entry without another call; nodes with
+    /// no entry fuse at the origin.
+    #[must_use]
+    pub fn with_node_positions(mut self, positions: HashMap<u8, [f32; 3]>) -> Self {
+        self.engine.set_node_positions(positions);
+        self
+    }
+
+    /// Node positions the governed fuser is using, keyed by node id.
+    pub fn node_positions(&self) -> &HashMap<u8, [f32; 3]> {
+        self.engine.node_positions()
     }
 
     /// Switch the active privacy mode (operator/control-plane action).
@@ -165,7 +191,8 @@ impl EngineBridge {
         node_states: &HashMap<u8, NodeState>,
         now_ms: i64,
     ) -> Option<Result<TrustedOutput, EngineError>> {
-        let frames = node_frames_from_states(node_states);
+        let frames =
+            node_frames_from_states_with_guard(node_states, self.guard_interval_us);
         if frames.is_empty() {
             return None;
         }
@@ -195,12 +222,21 @@ impl EngineBridge {
         node_states: &HashMap<u8, NodeState>,
         now_ms: i64,
     ) -> Option<TrustedOutput> {
-        match self.process_cycle_from_states(node_states, now_ms)? {
+        let result = self.process_cycle_from_states(node_states, now_ms)?;
+        self.record_cycle_result(result)
+    }
+
+    fn record_cycle_result(
+        &mut self,
+        result: Result<TrustedOutput, EngineError>,
+    ) -> Option<TrustedOutput> {
+        match result {
             Ok(trust) => {
                 self.last_witness = Some(trust.witness);
                 self.recalibration_recommended = trust.recalibration_recommended;
                 self.effective_class = Some(trust.effective_class);
                 self.demoted = trust.demoted;
+                self.phase_fusion = Some(trust.phase_fusion);
                 Some(trust)
             }
             Err(e) => {
@@ -243,6 +279,12 @@ impl EngineBridge {
         self.demoted
     }
 
+    /// Phase-combining mode of the most recent successful cycle (#1752);
+    /// `None` until a governed cycle has run.
+    pub fn phase_fusion(&self) -> Option<PhaseFusion> {
+        self.phase_fusion
+    }
+
     /// Engine cycles that returned an error since startup.
     pub fn engine_error_count(&self) -> u64 {
         self.engine_error_count
@@ -282,6 +324,33 @@ mod tests {
         m
     }
 
+    fn configured_positions() -> HashMap<u8, [f32; 3]> {
+        [(0u8, [0.5, 0.0, 1.0]), (1u8, [4.0, 3.0, 1.0])]
+            .into_iter()
+            .collect()
+    }
+
+    #[test]
+    fn with_node_positions_reaches_the_governed_fuser() {
+        let bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "r", "R", None)
+            .with_node_positions(configured_positions());
+        assert_eq!(bridge.node_positions(), &configured_positions());
+    }
+
+    #[test]
+    fn node_positions_survive_a_guard_config() {
+        let cfg = MultistaticConfig {
+            guard_interval_us: 200_000,
+            min_nodes: 1,
+            ..MultistaticConfig::default()
+        };
+        let mut bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "r", "R", Some(cfg))
+            .with_node_positions(configured_positions());
+        assert_eq!(bridge.node_positions(), &configured_positions());
+        assert!(bridge.observe_cycle(&two_node_states(), 1_000).is_some());
+        assert_eq!(bridge.node_positions(), &configured_positions());
+    }
+
     #[test]
     fn empty_states_produce_no_belief() {
         let mut bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "living_room", "Living Room", None);
@@ -289,6 +358,20 @@ mod tests {
         assert!(out.is_none());
         // No belief published, no sensor wired.
         assert_eq!(bridge.registered_node_count(), 0);
+    }
+
+    /// Issue #1752: the live amplitude-only path reports that phase was not
+    /// combined, with the reason, instead of implying coherent fusion.
+    #[test]
+    fn live_cycle_reports_amplitude_only_phase_fusion() {
+        use wifi_densepose_signal::ruvsense::multistatic::NonCoherentReason;
+        let mut bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "living_room", "Living Room", None);
+        assert_eq!(bridge.phase_fusion(), None);
+        bridge.observe_cycle(&two_node_states(), 10_000).expect("cycle succeeds");
+        let mode = bridge.phase_fusion().expect("recorded after a cycle");
+        assert_eq!(mode, PhaseFusion::AmplitudeOnly(NonCoherentReason::PhaseUnavailable));
+        assert_eq!(mode.mode_str(), "amplitude_only");
+        assert_eq!(mode.reason().map(NonCoherentReason::as_str), Some("phase_unavailable"));
     }
 
     #[test]
@@ -419,45 +502,29 @@ mod tests {
         assert!(!bridge.suppress_raw_outputs());
     }
 
-    /// Error wiring (review finding 1a): a live cycle that fails fusion yields
-    /// an `EngineError` — previously dropped by `if let Some(Ok(..))` at the
-    /// call sites. The counter must increment and the last good trust state
-    /// must survive a later failure.
-    ///
-    /// Originally this forced the failure with a 56-vs-30 subcarrier mismatch
-    /// (`DimensionMismatch`). Since #1170 the live bridge canonicalizes every
-    /// node onto the 56-tone grid, so heterogeneous counts now fuse cleanly —
-    /// a frame-timestamp spread wider than the fuser's 60 ms guard interval is
-    /// the remaining deterministic way to provoke a fusion error here.
+    /// Error-result accounting is independent from live cohort selection, so
+    /// a future engine error remains auditable without deliberately forwarding
+    /// temporally incoherent frames through the production bridge.
     #[test]
     fn observe_cycle_counts_engine_errors() {
-        // Both nodes are 56-subcarrier (canonicalization-clean), but their
-        // frame timestamps are 500 ms apart — far beyond the 60 ms guard —
-        // so the fuser rejects the cycle with TimestampMismatch. Future
-        // offsets keep both instants safely after the bridge's lazy EPOCH.
-        fn mismatched_states() -> HashMap<u8, NodeState> {
-            let now = Instant::now();
-            let mut a = node_state_with_history(1.0, 56);
-            a.last_frame_time = Some(now + std::time::Duration::from_millis(600));
-            let mut b = node_state_with_history(1.05, 56);
-            b.last_frame_time = Some(now + std::time::Duration::from_millis(100));
-            let mut m = HashMap::new();
-            m.insert(0u8, a);
-            m.insert(1u8, b);
-            m
-        }
-
         let mut bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "r", "R", None);
-        let mismatched = mismatched_states();
+        let error = || {
+            EngineError::Fusion(
+                wifi_densepose_signal::ruvsense::multistatic::MultistaticError::TimestampMismatch {
+                    spread_us: 500_000,
+                    guard_us: 60_000,
+                },
+            )
+        };
 
-        assert!(bridge.observe_cycle(&mismatched, 1_000).is_none());
+        assert!(bridge.record_cycle_result(Err(error())).is_none());
         assert_eq!(bridge.engine_error_count(), 1);
         assert!(
             bridge.last_trust_witness().is_none(),
             "no witness from a failed cycle"
         );
 
-        assert!(bridge.observe_cycle(&mismatched, 2_000).is_none());
+        assert!(bridge.record_cycle_result(Err(error())).is_none());
         assert_eq!(bridge.engine_error_count(), 2);
 
         // A later good cycle records trust state; the audit count is kept.
@@ -467,8 +534,36 @@ mod tests {
         assert_eq!(bridge.engine_error_count(), 2);
 
         // And a subsequent failure keeps the last good witness readable.
-        assert!(bridge.observe_cycle(&mismatched, 4_000).is_none());
+        assert!(bridge.record_cycle_result(Err(error())).is_none());
         assert_eq!(bridge.engine_error_count(), 3);
+        assert!(bridge.last_trust_witness().is_some());
+    }
+
+    #[test]
+    fn governed_cycles_prune_slow_mixed_width_nodes_without_errors() {
+        let mut bridge = EngineBridge::new(PrivacyMode::PrivateHome, 1, "r", "R", None);
+
+        for tick in 0..50_i64 {
+            let now = Instant::now();
+            let mut states = HashMap::new();
+            for (node_id, age_ms, n_sub) in [
+                (1, 0, 64),
+                (3, 10, 256),
+                (4, 50, 64),
+                (7, 1_000, 256),
+            ] {
+                let mut node = node_state_with_history(1.0 + node_id as f64 * 0.01, n_sub);
+                node.last_frame_time = Some(now - Duration::from_millis(age_ms));
+                states.insert(node_id, node);
+            }
+
+            assert!(
+                bridge.observe_cycle(&states, 1_000 + tick * 50).is_some(),
+                "governed cycle {tick}"
+            );
+        }
+
+        assert_eq!(bridge.engine_error_count(), 0);
         assert!(bridge.last_trust_witness().is_some());
     }
 

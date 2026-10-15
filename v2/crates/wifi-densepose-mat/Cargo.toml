@@ -1,6 +1,6 @@
 [package]
 name = "wifi-densepose-mat"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["rUv <ruv@ruv.net>", "WiFi-DensePose Contributors"]
 description = "Mass Casualty Assessment Tool - WiFi-based disaster survivor detection"
@@ -99,6 +99,11 @@ approx = "0.5"
 
 [[bench]]
 name = "detection_bench"
+harness = false
+
+# FeitCSI record parse throughput at wideband 802.11ax shapes (ADR-292).
+[[bench]]
+name = "feitcsi_bench"
 harness = false
 
 [package.metadata.docs.rs]

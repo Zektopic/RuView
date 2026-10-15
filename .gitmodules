@@ -29,3 +29,11 @@
 	path = v2/crates/worldgraph
 	url = https://github.com/ruvnet/worldgraph.git
 	branch = main
+[submodule "vendor/metaharness"]
+	path = vendor/metaharness
+	url = https://github.com/ruvnet/metaharness
+	branch = main
+[submodule "v2/crates/ruforecast"]
+	path = v2/crates/ruforecast
+	url = https://github.com/ruvnet/RuForecast.git
+	branch = main

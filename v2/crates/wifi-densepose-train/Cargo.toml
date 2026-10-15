@@ -1,6 +1,6 @@
 [package]
 name = "wifi-densepose-train"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["rUv <ruv@ruv.net>", "WiFi-DensePose Contributors"]
 license = "MIT OR Apache-2.0"
@@ -106,4 +106,10 @@ ndarray-npy.workspace = true
 
 [[bench]]
 name = "training_bench"
+harness = false
+
+# ADR-291 — bfee-parser throughput and split-assignment benchmarks on
+# synthetic, code-generated corpora (no dataset files).
+[[bench]]
+name = "benchmark_harness"
 harness = false

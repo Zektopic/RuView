@@ -58,24 +58,38 @@ impl StateMessage {
     }
 }
 
-/// Sample-rate-limit decisions, per entity. Tracks the last-emitted
-/// instant per entity and gates further emissions accordingly. Time is
-/// supplied by the caller so the limiter is testable without a clock.
+/// Sample-rate-limit decisions, per `(node, entity)`. Tracks the
+/// last-emitted instant for each entity *on each node* and gates further
+/// emissions accordingly. Time is supplied by the caller so the limiter is
+/// testable without a clock.
+///
+/// ADR-297 (issue #1541): the key is `(NodeId, EntityKind)`, not `EntityKind`
+/// alone. With an entity-only key one node consumed the numeric publish slot
+/// and every other node was suppressed until the interval expired — while
+/// availability still reported them online. Keying by node keeps each node's
+/// per-entity budget independent so nodes no longer starve one another.
 #[derive(Debug, Default)]
 pub struct RateLimiter {
-    last: HashMap<EntityKind, Duration>,
+    last: HashMap<(String, EntityKind), Duration>,
 }
 
 impl RateLimiter {
-    /// Build a fresh limiter with no per-entity history.
+    /// Build a fresh limiter with no per-`(node, entity)` history.
     pub fn new() -> Self {
         Self { last: HashMap::new() }
     }
 
-    /// Decide whether a sample for `entity` is allowed to publish at
-    /// `now`, given the configured `rates`. Returns true to publish
-    /// (and updates last-emitted state); false to drop.
-    pub fn allow(&mut self, entity: EntityKind, now: Duration, rates: &PublishRates) -> bool {
+    /// Decide whether a sample for `entity` on node `node_id` is allowed to
+    /// publish at `now`, given the configured `rates`. Returns true to publish
+    /// (and updates last-emitted state); false to drop. Each node's budget for
+    /// an entity is independent of every other node's (ADR-297).
+    pub fn allow(
+        &mut self,
+        node_id: &str,
+        entity: EntityKind,
+        now: Duration,
+        rates: &PublishRates,
+    ) -> bool {
         let min_gap = match rate_hz_for(entity, rates) {
             // Zero / negative Hz → emit only on change (caller path).
             // Here we treat it as "always allow" because the caller is
@@ -83,13 +97,15 @@ impl RateLimiter {
             rate if rate <= 0.0 => return true,
             rate => Duration::from_secs_f64(1.0 / rate),
         };
-        match self.last.get(&entity) {
-            Some(&prev) if now.saturating_sub(prev) < min_gap => false,
-            _ => {
-                self.last.insert(entity, now);
-                true
+        // Borrow the key without allocating on the hot lookup path; only
+        // allocate the owned `String` when inserting a new node/entity slot.
+        if let Some(&prev) = self.last.get(&(node_id.to_string(), entity)) {
+            if now.saturating_sub(prev) < min_gap {
+                return false;
             }
         }
+        self.last.insert((node_id.to_string(), entity), now);
+        true
     }
 
     /// Reset all per-entity history. Used after a reconnect so the first
@@ -139,9 +155,12 @@ pub struct VitalsSnapshot {
     pub node_id: String,
     pub timestamp_ms: i64,
     pub presence: bool,
-    pub fall_detected: bool,
+    /// `Some(true)` once per detected fall, `Some(false)` while the node's
+    /// fall detector reports, `None` when the node has no fall source.
+    pub fall_detected: Option<bool>,
     pub motion: f64,             // 0.0–1.0
-    pub motion_energy: f64,
+    /// `None` when the frame carries no motion band power.
+    pub motion_energy: Option<f64>,
     pub presence_score: f64,     // 0.0–1.0
     pub breathing_rate_bpm: Option<f64>,
     pub heartrate_bpm: Option<f64>,
@@ -184,6 +203,12 @@ struct PresenceScorePayload {
 #[derive(Serialize, Debug)]
 struct RssiPayload {
     dbm: f64,
+    ts: String,
+}
+
+#[derive(Serialize, Debug)]
+struct ScorePayload {
+    score: f64,
     ts: String,
 }
 
@@ -253,7 +278,7 @@ impl<'a> StateEncoder<'a> {
                 ts: ts.clone(),
             }).ok()?,
             EntityKind::MotionEnergy => serde_json::to_value(EnergyStatePayload {
-                energy: snap.motion_energy,
+                energy: snap.motion_energy?,
                 ts: ts.clone(),
             }).ok()?,
             EntityKind::PresenceScore => serde_json::to_value(PresenceScorePayload {
@@ -275,6 +300,32 @@ impl<'a> StateEncoder<'a> {
         );
         let payload = serde_json::to_string(&payload_value).ok()?;
         Some(StateMessage::new(topic, payload, DiscoveryComponent::Sensor, false))
+    }
+
+    /// 0–100 score sensor (fall risk), matching the `{{ value_json.score }}`
+    /// discovery template.
+    pub fn score(&self, entity: EntityKind, value: f64, ts_ms: i64) -> Option<StateMessage> {
+        if !matches!(entity.component(), DiscoveryComponent::Sensor) || !value.is_finite() {
+            return None;
+        }
+        let payload = serde_json::to_string(&ScorePayload {
+            score: value.clamp(0.0, 100.0),
+            ts: iso_ts(ts_ms),
+        })
+        .ok()?;
+        let topic = format!(
+            "{}/{}/wifi_densepose_{}/{}/state",
+            self.builder.discovery_prefix,
+            entity.component().as_str(),
+            self.builder.node_id,
+            entity.topic_slug(),
+        );
+        Some(StateMessage::new(
+            topic,
+            payload,
+            DiscoveryComponent::Sensor,
+            false,
+        ))
     }
 
     /// One-shot event encoder. Used for fall, bed exit, multi-room
@@ -338,9 +389,9 @@ mod tests {
             node_id: "aabbccddeeff".into(),
             timestamp_ms: 1779_512_400_000,
             presence: true,
-            fall_detected: false,
+            fall_detected: Some(false),
             motion: 0.35,
-            motion_energy: 1234.5,
+            motion_energy: Some(1234.5),
             presence_score: 0.91,
             breathing_rate_bpm: Some(14.2),
             heartrate_bpm: Some(68.2),
@@ -352,10 +403,12 @@ mod tests {
 
     // ─── Rate limiter ────────────────────────────────────────────────
 
+    const NODE: &str = "node-a";
+
     #[test]
     fn rate_limiter_first_sample_always_passes() {
         let mut rl = RateLimiter::new();
-        assert!(rl.allow(EntityKind::HeartRate, Duration::ZERO, &rates()));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::ZERO, &rates()));
     }
 
     #[test]
@@ -363,27 +416,27 @@ mod tests {
         let mut rl = RateLimiter::new();
         let r = rates();
         // 0.2 Hz → 5 s gap.
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(0), &r));
-        assert!(!rl.allow(EntityKind::HeartRate, Duration::from_secs(1), &r));
-        assert!(!rl.allow(EntityKind::HeartRate, Duration::from_secs(4), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(0), &r));
+        assert!(!rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(1), &r));
+        assert!(!rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(4), &r));
     }
 
     #[test]
     fn rate_limiter_allows_after_gap() {
         let mut rl = RateLimiter::new();
         let r = rates();
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(0), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(0), &r));
         // 5 s gap met → allow.
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(5), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(5), &r));
     }
 
     #[test]
     fn rate_limiter_per_entity_independent() {
         let mut rl = RateLimiter::new();
         let r = rates();
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(0), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(0), &r));
         // Different entity, same instant → independent budget.
-        assert!(rl.allow(EntityKind::MotionLevel, Duration::from_secs(0), &r));
+        assert!(rl.allow(NODE, EntityKind::MotionLevel, Duration::from_secs(0), &r));
     }
 
     #[test]
@@ -392,7 +445,7 @@ mod tests {
         let r = rates();
         // Presence is change-only → rate=0 → unlimited; caller does change detection.
         for s in 0..3 {
-            assert!(rl.allow(EntityKind::Presence, Duration::from_secs(s), &r));
+            assert!(rl.allow(NODE, EntityKind::Presence, Duration::from_secs(s), &r));
         }
     }
 
@@ -400,11 +453,27 @@ mod tests {
     fn rate_limiter_reset_re_enables_immediate_publish() {
         let mut rl = RateLimiter::new();
         let r = rates();
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(0), &r));
-        assert!(!rl.allow(EntityKind::HeartRate, Duration::from_secs(1), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(0), &r));
+        assert!(!rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(1), &r));
         rl.reset();
         // Post-reset: first sample passes.
-        assert!(rl.allow(EntityKind::HeartRate, Duration::from_secs(1), &r));
+        assert!(rl.allow(NODE, EntityKind::HeartRate, Duration::from_secs(1), &r));
+    }
+
+    #[test]
+    fn rate_limiter_nodes_do_not_starve_each_other() {
+        // ADR-297 (issue #1541): with an entity-only key, node-a consuming the
+        // slot suppressed node-b. Keyed by (node, entity), both publish.
+        let mut rl = RateLimiter::new();
+        let r = rates();
+        assert!(rl.allow("node-a", EntityKind::PersonCount, Duration::from_secs(0), &r));
+        assert!(
+            rl.allow("node-b", EntityKind::PersonCount, Duration::from_secs(0), &r),
+            "second node must not be starved by the first"
+        );
+        // Each node still rate-limits itself.
+        assert!(!rl.allow("node-a", EntityKind::PersonCount, Duration::from_millis(100), &r));
+        assert!(!rl.allow("node-b", EntityKind::PersonCount, Duration::from_millis(100), &r));
     }
 
     // ─── Boolean / binary_sensor encoder ─────────────────────────────
@@ -473,6 +542,32 @@ mod tests {
         let mut s = snap();
         s.heartrate_bpm = None;
         assert!(enc.numeric(EntityKind::HeartRate, &s).is_none());
+    }
+
+    #[test]
+    fn numeric_encoder_has_no_motion_energy_without_a_source() {
+        let b = builder();
+        let enc = StateEncoder { builder: &b };
+        let mut s = snap();
+        s.motion_energy = None;
+        assert!(
+            enc.numeric(EntityKind::MotionEnergy, &s).is_none(),
+            "never a default 0"
+        );
+    }
+
+    #[test]
+    fn score_encoder_matches_discovery_template() {
+        let b = builder();
+        let enc = StateEncoder { builder: &b };
+        let msg = enc.score(EntityKind::FallRiskElevated, 142.0, 0).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&msg.payload).unwrap();
+        assert_eq!(json["score"], 100.0, "clamped to 0..100");
+        assert!(msg.topic.ends_with("/fall_risk_elevated/state"));
+        assert!(enc
+            .score(EntityKind::FallRiskElevated, f64::NAN, 0)
+            .is_none());
+        assert!(enc.score(EntityKind::Presence, 1.0, 0).is_none());
     }
 
     #[test]
