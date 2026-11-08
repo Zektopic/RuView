@@ -536,7 +536,7 @@ export class NvGhostMurmur extends LitElement {
       </div>
 
       <h2>RuView's three-tier mesh — what is actually buildable</h2>
-      <div class="architecture" tabindex="0">                      ┌──────────────────────────┐
+      <div class="architecture" tabindex="0" role="group" aria-label="RuView three-tier mesh architecture">                      ┌──────────────────────────┐
                       │   Tier 3 — NV-diamond    │  Range: 0.1–2 m (lab)
                       │     magnetometer ring    │  Status: nvsim simulator only
                       │     (close-confirm)      │  Hardware: $$$ (≥$8k DNV-B1)

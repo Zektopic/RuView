@@ -139,7 +139,7 @@ export class NvAppStore extends LitElement {
     }
     .badge {
       padding: 1px 6px; border-radius: 4px;
-      background: var(--bg-3); color: var(--ink-2);
+      background: var(--bg-3); color: var(--ink-3);
       border: 1px solid var(--line);
     }
     .badge.cat { color: var(--accent); border-color: oklch(0.78 0.14 70 / 0.3); }
@@ -388,8 +388,8 @@ export class NvAppStore extends LitElement {
         <div class="card-foot">
           <span class="events">${app.crate}</span>
           ${evCount > 0 ? html`<span class="card-events-count">⚡ ${evCount} ev</span>` : ''}
-          <span class="toggle ${active ? 'on' : ''}" role="switch"
-            aria-checked=${active} aria-label="Toggle ${app.crate}"
+          <span class="toggle ${active ? 'on' : ''}" role="switch" aria-label=${`Enable ${app.name}`}
+            aria-checked=${active}
             data-app-toggle=${app.id}
             @click=${() => this.toggle(app)}></span>
         </div>
