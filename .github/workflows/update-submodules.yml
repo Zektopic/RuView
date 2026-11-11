@@ -30,11 +30,11 @@ jobs:
 
       - name: Check for changes and push directly to main
         run: |
-          if git diff --quiet; then
+          if git diff --quiet -- vendor/; then
             echo "No submodule changes detected — nothing to commit."
           else
             echo "--- submodule pointer changes ---"
-            git submodule status --recursive || true
+            git submodule status --recursive vendor/ || true
             git diff --submodule=log -- vendor/ || true
             git add vendor/
             git commit -m "chore: update vendor submodules to latest upstream"
